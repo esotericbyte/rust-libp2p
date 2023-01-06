@@ -56,10 +56,10 @@ use futures::{
 };
 use libp2p::{
     floodsub::{self, Floodsub, FloodsubEvent},
-    identity, mdns,
+    identity,
     swarm::{NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId, Swarm,
-};
+}; // mdns removed form list
 use std::error::Error;
 
 #[async_std::main]
@@ -83,17 +83,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     #[behaviour(out_event = "OutEvent")]
     struct MyBehaviour {
         floodsub: Floodsub,
-        mdns: mdns::async_io::Behaviour,
+        //mdns: mdns::async_io::Behaviour,
     }
 
     #[allow(clippy::large_enum_variant)]
     #[derive(Debug)]
     enum OutEvent {
         Floodsub(FloodsubEvent),
-        Mdns(mdns::Event),
+       // Mdns(mdns::Event),
     }
 
-    impl From<mdns::Event> for OutEvent {
+   /*  impl From<mdns::Event> for OutEvent {
         fn from(v: mdns::Event) -> Self {
             Self::Mdns(v)
         }
@@ -103,14 +103,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fn from(v: FloodsubEvent) -> Self {
             Self::Floodsub(v)
         }
-    }
+    } */
 
     // Create a Swarm to manage peers and events
     let mut swarm = {
-        let mdns = mdns::async_io::Behaviour::new(mdns::Config::default(), local_peer_id)?;
+        //let mdns = mdns::async_io::Behaviour::new(mdns::Config::default())?;
         let mut behaviour = MyBehaviour {
             floodsub: Floodsub::new(local_peer_id),
-            mdns,
+            // mdns,
         };
 
         behaviour.floodsub.subscribe(floodsub_topic.clone());
@@ -150,7 +150,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         message.source
                     );
                 }
-                SwarmEvent::Behaviour(OutEvent::Mdns(
+                /* SwarmEvent::Behaviour(OutEvent::Mdns(
                     mdns::Event::Discovered(list)
                 )) => {
                     for (peer, _) in list {
@@ -159,8 +159,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .floodsub
                             .add_node_to_partial_view(peer);
                     }
-                }
-                SwarmEvent::Behaviour(OutEvent::Mdns(mdns::Event::Expired(
+                } */
+                /* SwarmEvent::Behaviour(OutEvent::Mdns(mdns::Event::Expired(
                     list
                 ))) => {
                     for (peer, _) in list {
@@ -171,9 +171,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 .remove_node_from_partial_view(&peer);
                         }
                     }
-                },
+                } */,
                 some_event => {
-                    println!("EVENT: '{:?}'",some_event);
+                    println!("EVENT: '{:?}'",some_event)
                 }
             }
         }
