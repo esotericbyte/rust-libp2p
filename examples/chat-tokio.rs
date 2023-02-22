@@ -30,12 +30,13 @@
 
 use futures::StreamExt;
 use libp2p::{
-    core::upgrade,
+    core::{upgrade, },
     floodsub::{self, Floodsub, FloodsubEvent},
     identity, mdns, mplex, noise,
-    swarm::{NetworkBehaviour, SwarmEvent},
+    swarm::{NetworkBehaviour, SwarmEvent },
     tcp, Multiaddr, PeerId, Transport,
 };
+use libp2p_swarm::derive_prelude::ConnectedPoint::Dialer;
 use std::error::Error;
 use tokio::io::{self, AsyncBufReadExt};
 
@@ -98,6 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         mdns: mdns_behaviour,
     };
     let mut swarm = libp2p_swarm::Swarm::with_tokio_executor(transport, behaviour, peer_id);
+    swarm.behaviour_mut().floodsub.subscribe(floodsub_topic.clone());
 
     // Reach out to another node if specified
     if let Some(to_dial) = std::env::args().nth(1) {
@@ -116,8 +118,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         tokio::select! {
             line = stdin.next_line() => {
-                let line = line?.expect("stdin closed");
-                swarm.behaviour_mut().floodsub.publish(floodsub_topic.clone(), line.as_bytes());
+                let line_str = line?.expect("stdin closed");
+                if line_str == "!INFO" {
+                        println!("NETWORK INFO:{:?}",swarm.network_info());
+                }
+                else { 
+                    
+                    println!("INPUT LINE:{:?}",line_str);
+                    swarm.behaviour_mut().floodsub.publish_any(floodsub_topic.clone(), line_str.as_bytes());
+                }
             }
             event = swarm.select_next_some() => {
                 match event {
@@ -147,8 +156,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
                     }
-                    some_event => {
-                        println!("EVENT: '{:?}'",some_event);
+                    SwarmEvent::ConnectionEstablished{peer_id,..} => {
+                        println!("Connected!: '{:?}'",event);
+                        swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
+                    }
+                    SwarmEvent::ConnectionClosed {peer_id, endpoint: Dialer { address,.. },
+                        cause: Some(libp2p_swarm::ConnectionError::KeepAliveTimeout),..} => {
+                        swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
+                        // Hanging up so rude! Redial !
+                        println!("KeepAliveTimeout, Redialing {:?}",address);
+                        swarm.dial(address)?;
+                    }
+                    SwarmEvent::ConnectionClosed {peer_id,..} =>{
+                        swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
+                        println!("DRAT!:{:?}", event)
+                    }
+                    other_swarm_event => {
+                        println!("EVENT: '{:?}'",other_swarm_event);
                     }
                 }
             }
