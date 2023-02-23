@@ -4,6 +4,7 @@
 [![dependency status](https://deps.rs/repo/github/libp2p/rust-libp2p/status.svg?style=flat-square)](https://deps.rs/repo/github/libp2p/rust-libp2p)
 [![Crates.io](https://img.shields.io/crates/v/libp2p.svg)](https://crates.io/crates/libp2p)
 [![docs.rs](https://img.shields.io/badge/api-rustdoc-blue.svg)](https://docs.rs/libp2p)
+[![docs.rs master](https://img.shields.io/badge/docs-master-blueviolet)](https://libp2p.github.io/rust-libp2p/libp2p/)
 
 This repository is the central place for Rust development of the [libp2p](https://libp2p.io) spec.
 
@@ -78,6 +79,7 @@ Conduct](https://github.com/ipfs/community/blob/master/code-of-conduct.md).
 (In alphabetical order.)
 
 - Elena Frank ([@elenaf9](https://github.com/elenaf9/))
+- João Oliveira ([@jxs](https://github.com/jxs))
 - Max Inden ([@mxinden](https://github.com/mxinden/))
 - Thomas Eizinger ([@thomaseizinger](https://github.com/thomaseizinger))
 
@@ -99,3 +101,4 @@ used and maintained by [Actyx](https://www.actyx.com).
 - [Subspace](https://github.com/subspace/subspace) - Subspace Network reference implementation
 - [Substrate](https://github.com/paritytech/substrate) - Framework for blockchain innovation,
 used by [Polkadot](https://www.parity.io/technologies/polkadot/).
+- [Ursa](https://github.com/fleek-network/ursa) - Decentralized Content Delivery & Edge Compute.

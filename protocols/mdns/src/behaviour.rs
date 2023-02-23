@@ -28,10 +28,10 @@ use crate::Config;
 use futures::Stream;
 use if_watch::IfEvent;
 use libp2p_core::{Multiaddr, PeerId};
-use libp2p_swarm::behaviour::{ConnectionClosed, FromSwarm};
+use libp2p_swarm::behaviour::FromSwarm;
 use libp2p_swarm::{
-    dummy, ConnectionHandler, ListenAddresses, NetworkBehaviour, NetworkBehaviourAction,
-    PollParameters,
+    dummy, ListenAddresses, NetworkBehaviour, NetworkBehaviourAction, PollParameters,
+    THandlerInEvent, THandlerOutEvent,
 };
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
@@ -189,8 +189,8 @@ where
     fn on_connection_handler_event(
         &mut self,
         _: PeerId,
-        _: libp2p_core::connection::ConnectionId,
-        ev: <Self::ConnectionHandler as ConnectionHandler>::OutEvent,
+        _: libp2p_swarm::ConnectionId,
+        ev: THandlerOutEvent<Self>,
     ) {
         void::unreachable(ev)
     }
@@ -199,22 +199,14 @@ where
         self.listen_addresses.on_swarm_event(&event);
 
         match event {
-            FromSwarm::ConnectionClosed(ConnectionClosed {
-                peer_id,
-                remaining_established,
-                ..
-            }) => {
-                if remaining_established == 0 {
-                    self.expire_node(&peer_id);
-                }
-            }
             FromSwarm::NewListener(_) => {
                 log::trace!("waking interface state because listening address changed");
                 for iface in self.iface_states.values_mut() {
                     iface.fire_timer();
                 }
             }
-            FromSwarm::ConnectionEstablished(_)
+            FromSwarm::ConnectionClosed(_)
+            | FromSwarm::ConnectionEstablished(_)
             | FromSwarm::DialFailure(_)
             | FromSwarm::AddressChange(_)
             | FromSwarm::ListenFailure(_)
@@ -231,7 +223,7 @@ where
         &mut self,
         cx: &mut Context<'_>,
         _: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, dummy::ConnectionHandler>> {
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, THandlerInEvent<Self>>> {
         // Poll ifwatch.
         while let Poll::Ready(Some(event)) = Pin::new(&mut self.if_watch).poll_next(cx) {
             match event {

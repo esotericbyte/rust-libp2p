@@ -70,11 +70,12 @@ pub use handler::ProtocolSupport;
 
 use futures::channel::oneshot;
 use handler::{Handler, RequestProtocol};
-use libp2p_core::{connection::ConnectionId, ConnectedPoint, Multiaddr, PeerId};
+use libp2p_core::{ConnectedPoint, Multiaddr, PeerId};
 use libp2p_swarm::{
     behaviour::{AddressChange, ConnectionClosed, ConnectionEstablished, DialFailure, FromSwarm},
     dial_opts::DialOpts,
-    IntoConnectionHandler, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
+    ConnectionId, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
+    THandlerInEvent, THandlerOutEvent,
 };
 use smallvec::SmallVec;
 use std::{
@@ -348,8 +349,9 @@ where
     /// The protocol codec for reading and writing requests and responses.
     codec: TCodec,
     /// Pending events to return from `poll`.
-    pending_events:
-        VecDeque<NetworkBehaviourAction<Event<TCodec::Request, TCodec::Response>, Handler<TCodec>>>,
+    pending_events: VecDeque<
+        NetworkBehaviourAction<Event<TCodec::Request, TCodec::Response>, RequestProtocol<TCodec>>,
+    >,
     /// The currently connected peers, their pending outbound and inbound responses and their known,
     /// reachable addresses, if any.
     connected: HashMap<PeerId, SmallVec<[Connection; 2]>>,
@@ -416,10 +418,8 @@ where
         };
 
         if let Some(request) = self.try_send_request(peer, request) {
-            let handler = self.new_handler();
             self.pending_events.push_back(NetworkBehaviourAction::Dial {
                 opts: DialOpts::peer_id(*peer).build(),
-                handler,
             });
             self.pending_outbound_requests
                 .entry(*peer)
@@ -695,10 +695,7 @@ where
         }
     }
 
-    fn on_dial_failure(
-        &mut self,
-        DialFailure { peer_id, .. }: DialFailure<<Self as NetworkBehaviour>::ConnectionHandler>,
-    ) {
+    fn on_dial_failure(&mut self, DialFailure { peer_id, .. }: DialFailure) {
         if let Some(peer) = peer_id {
             // If there are pending outgoing requests when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
@@ -775,8 +772,7 @@ where
         &mut self,
         peer: PeerId,
         connection: ConnectionId,
-        event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as
-            libp2p_swarm::ConnectionHandler>::OutEvent,
+        event: THandlerOutEvent<Self>,
     ) {
         match event {
             handler::Event::Response {
@@ -931,7 +927,7 @@ where
         &mut self,
         _: &mut Context<'_>,
         _: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, THandlerInEvent<Self>>> {
         if let Some(ev) = self.pending_events.pop_front() {
             return Poll::Ready(ev);
         } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {

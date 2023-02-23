@@ -22,12 +22,12 @@ use crate::structs_proto;
 use asynchronous_codec::{FramedRead, FramedWrite};
 use futures::{future::BoxFuture, prelude::*};
 use libp2p_core::{
-    connection::ConnectionId,
     identity, multiaddr,
     upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo},
     Multiaddr, PublicKey,
 };
-use log::trace;
+use libp2p_swarm::ConnectionId;
+use log::{debug, trace};
 use std::convert::TryFrom;
 use std::{io, iter, pin::Pin};
 use thiserror::Error;
@@ -189,11 +189,14 @@ where
     Ok(())
 }
 
-async fn recv<T>(mut socket: T) -> Result<Info, UpgradeError>
+async fn recv<T>(socket: T) -> Result<Info, UpgradeError>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
-    socket.close().await?;
+    // Even though we won't write to the stream anymore we don't close it here.
+    // The reason for this is that the `close` call on some transport's require the
+    // remote's ACK, but it could be that the remote already dropped the stream
+    // after finishing their write.
 
     let info = FramedRead::new(
         socket,
@@ -220,14 +223,25 @@ impl TryFrom<structs_proto::Identify> for Info {
         let listen_addrs = {
             let mut addrs = Vec::new();
             for addr in msg.listen_addrs.into_iter() {
-                addrs.push(parse_multiaddr(addr)?);
+                match parse_multiaddr(addr) {
+                    Ok(a) => addrs.push(a),
+                    Err(e) => {
+                        debug!("Unable to parse multiaddr: {e:?}");
+                    }
+                }
             }
             addrs
         };
 
         let public_key = PublicKey::from_protobuf_encoding(&msg.public_key.unwrap_or_default())?;
 
-        let observed_addr = parse_multiaddr(msg.observed_addr.unwrap_or_default())?;
+        let observed_addr = match parse_multiaddr(msg.observed_addr.unwrap_or_default()) {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("Unable to parse multiaddr: {e:?}");
+                Multiaddr::empty()
+            }
+        };
         let info = Info {
             public_key,
             protocol_version: msg.protocol_version.unwrap_or_default(),
@@ -348,5 +362,34 @@ mod tests {
 
             bg_task.await;
         });
+    }
+
+    #[test]
+    fn skip_invalid_multiaddr() {
+        let valid_multiaddr: Multiaddr = "/ip6/2001:db8::/tcp/1234".parse().unwrap();
+        let valid_multiaddr_bytes = valid_multiaddr.to_vec();
+
+        let invalid_multiaddr = {
+            let a = vec![255; 8];
+            assert!(Multiaddr::try_from(a.clone()).is_err());
+            a
+        };
+
+        let payload = structs_proto::Identify {
+            agent_version: None,
+            listen_addrs: vec![valid_multiaddr_bytes, invalid_multiaddr],
+            observed_addr: None,
+            protocol_version: None,
+            protocols: vec![],
+            public_key: Some(
+                identity::Keypair::generate_ed25519()
+                    .public()
+                    .to_protobuf_encoding(),
+            ),
+        };
+
+        let info = Info::try_from(payload).expect("not to fail");
+
+        assert_eq!(info.listen_addrs, vec![valid_multiaddr])
     }
 }

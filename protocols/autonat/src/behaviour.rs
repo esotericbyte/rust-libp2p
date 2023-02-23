@@ -28,9 +28,7 @@ use as_server::AsServer;
 pub use as_server::{InboundProbeError, InboundProbeEvent};
 use futures_timer::Delay;
 use instant::Instant;
-use libp2p_core::{
-    connection::ConnectionId, multiaddr::Protocol, ConnectedPoint, Endpoint, Multiaddr, PeerId,
-};
+use libp2p_core::{multiaddr::Protocol, ConnectedPoint, Endpoint, Multiaddr, PeerId};
 use libp2p_request_response::{
     self as request_response, ProtocolSupport, RequestId, ResponseChannel,
 };
@@ -39,8 +37,8 @@ use libp2p_swarm::{
         AddressChange, ConnectionClosed, ConnectionEstablished, DialFailure, ExpiredExternalAddr,
         ExpiredListenAddr, FromSwarm,
     },
-    ConnectionHandler, ExternalAddresses, IntoConnectionHandler, ListenAddresses, NetworkBehaviour,
-    NetworkBehaviourAction, PollParameters,
+    ConnectionId, ExternalAddresses, ListenAddresses, NetworkBehaviour, NetworkBehaviourAction,
+    PollParameters, THandlerInEvent, THandlerOutEvent,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -210,10 +208,7 @@ pub struct Behaviour {
     last_probe: Option<Instant>,
 
     pending_actions: VecDeque<
-        NetworkBehaviourAction<
-            <Self as NetworkBehaviour>::OutEvent,
-            <Self as NetworkBehaviour>::ConnectionHandler,
-        >,
+        NetworkBehaviourAction<<Self as NetworkBehaviour>::OutEvent, THandlerInEvent<Self>>,
     >,
 
     probe_id: ProbeId,
@@ -391,14 +386,14 @@ impl Behaviour {
         &mut self,
         DialFailure {
             peer_id,
-            handler,
+            connection_id,
             error,
-        }: DialFailure<<Self as NetworkBehaviour>::ConnectionHandler>,
+        }: DialFailure,
     ) {
         self.inner
             .on_swarm_event(FromSwarm::DialFailure(DialFailure {
                 peer_id,
-                handler,
+                connection_id,
                 error,
             }));
         if let Some(event) = self.as_server().on_outbound_dial_error(peer_id, error) {
@@ -500,7 +495,7 @@ impl NetworkBehaviour for Behaviour {
 
     fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
         self.listen_addresses.on_swarm_event(&event);
-        self.external_addresses.on_swarn_event(&event);
+        self.external_addresses.on_swarm_event(&event);
 
         match event {
             FromSwarm::ConnectionEstablished(connection_established) => {
@@ -555,18 +550,15 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         peer_id: PeerId,
         connection_id: ConnectionId,
-        event:  <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as
-    ConnectionHandler>::OutEvent,
+        event: THandlerOutEvent<Self>,
     ) {
         self.inner
             .on_connection_handler_event(peer_id, connection_id, event)
     }
 }
 
-type Action = NetworkBehaviourAction<
-    <Behaviour as NetworkBehaviour>::OutEvent,
-    <Behaviour as NetworkBehaviour>::ConnectionHandler,
->;
+type Action =
+    NetworkBehaviourAction<<Behaviour as NetworkBehaviour>::OutEvent, THandlerInEvent<Behaviour>>;
 
 // Trait implemented for `AsClient` and `AsServer` to handle events from the inner [`request_response::Behaviour`] Protocol.
 trait HandleInnerEvent {
