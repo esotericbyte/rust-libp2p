@@ -164,6 +164,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         cause: Some(libp2p_swarm::ConnectionError::KeepAliveTimeout),..} => {
                         swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
                         // Hanging up so rude! Redial !
+                        // maybe a goodbye message. I believe this will only retry once.
                         println!("KeepAliveTimeout, Redialing {:?}",address);
                         swarm.dial(address)?;
                     }
